@@ -1,0 +1,8 @@
+[package]
+name = "thsr-ticket-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+opener = "0.5.2"
+reqwest = { version = "0.12.11", features = ["blocking", "json"] }
