@@ -2,9 +2,12 @@ use reqwest::blocking::Client;
 use std::{fs::File, io::{self, Write}};
 use std::path::Path;
 use opener;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, HOST, USER_AGENT};
+use reqwest::redirect::Policy;
+use scraper::{Html, Selector};
 
-fn download_captcha(client: &Client, url: &str, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let response = client.get(url).send()?;
+fn download_captcha(client: &Client, url: &str, headers: HeaderMap, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let response = client.get(url).headers(headers).send()?;
     let bytes = response.bytes()?;
 
     let mut file = File::create(output_path)?;
@@ -15,16 +18,36 @@ fn download_captcha(client: &Client, url: &str, output_path: &Path) -> Result<()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::builder().build()?;
-    let captcha_url = "https://example.com/captcha";
-    let captcha_path = Path::new("tmp/captcha.png");
+    let client = Client::builder()
+        .redirect(Policy::default())
+        .cookie_store(true)
+        .build()?;
+    let booking_page_url = "https://irs.thsrc.com.tw/IMINT/?locale=tw";
+    let captcha_local_path = Path::new("tmp/captcha.png");
 
     // TODO WIP: Download CAPTCHA image
-    // download_captcha(&client, captcha_url, captcha_path)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(HOST, HeaderValue::from_static("irs.thsrc.com.tw"));
+    headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246"));
+    headers.insert(ACCEPT, HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"));
+    headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("zh-TW,zh;q=0.8,en-US;q=0.5,en;q=0.3"));
+    headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("gzip, deflate, br"));
+    let response = client
+        .get(booking_page_url)
+        .headers(headers.clone())
+        .send()?.text()?;
+    let document = Html::parse_document(&response);
+    let selector = Selector::parse("#BookingS1Form_homeCaptcha_passCode").unwrap();
+    let element = document.select(&selector).next().expect("Couldn't find the captcha element");
+    let src = element.value().attr("src").expect("Couldn't find the captcha source url");
+    let captcha_url = ["https://irs.thsrc.com.tw", src].concat();
+    println!("Captcha url: {}", captcha_url);
+
+    download_captcha(&client, captcha_url.as_str(), headers, captcha_local_path)?;
 
     // Open the image for the user
-    println!("Opening {}... Please view and type the CAPTCHA shown.", captcha_path.display());
-    opener::open(captcha_path)?;
+    println!("Opening {}... Please view and type the CAPTCHA shown.", captcha_local_path.display());
+    opener::open(captcha_local_path)?;
 
     // Get user input for CAPTCHA
     let mut captcha_solution = String::new();
