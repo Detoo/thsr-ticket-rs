@@ -103,13 +103,21 @@ struct Booking {
 }
 
 #[derive(Debug)]
-struct Train {
+struct TrainInfo {
     id: i16,
     depart: String,
     arrive: String,
     travel_time: String,
     discount_str: String,
     form_value: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct TrainSelection {
+    #[serde(rename = "TrainQueryDataViewPanel:TrainGroup")]
+    selected_train: String,
+    #[serde(default, rename = "BookingS2Form:hf:0")]
+    form_mark: String,
 }
 
 fn default_adult_ticket() -> String {
@@ -224,53 +232,58 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("JSESSIONID: {}", session_id);
 
     // Get user input for CAPTCHA
-    println!("Type the answer to the CAPTCHA: ");
-    let mut captcha_solution = String::new();
-    io::stdin().read_line(&mut captcha_solution)?;
-    let captcha_solution = captcha_solution.trim();
+    let captcha_solution = {
+        println!("Type the answer to the CAPTCHA: ");
+        let mut captcha_solution = String::new();
+        io::stdin().read_line(&mut captcha_solution)?;
+        captcha_solution.trim().to_string()
+    };
     println!("CAPTCHA solution entered: {}", captcha_solution);
 
-    // TODO Get booking parameters either from presets or user input
-    // TODO Fake the booking parameters for now
-    // TODO Use serde to model the booking parameters
-
-    // TODO Test booking
-    let booking = Booking{
-        start_station: Station::Nangang,
-        dest_station: Station::Zuouing,
-        search_by: String::from("radio31"),
-        types_of_trip: Trip::OneWay,
-        // TODO test
-        // outbound_datetime: DateTime::parse_from_str("2025/01/21 10:00 AM", "%Y/%m/%d %H:%M")
+    // Prepare booking info
+    let booking = {
+        // TODO Get booking parameters either from presets or user input
+        // TODO Fake the booking parameters for now
+        // TODO Use serde to model the booking parameters
 
         // TODO test
-        outbound_date: String::from("2025/01/21"),
-        // outbound_date: String::from("2025/02/21"),
+        // let dt = NaiveDateTime::parse_from_str("2025/01/27 22:00", "%Y/%m/%d %H:%M").unwrap();
+        // println!("datetime: {}", dt);
 
-        outbound_time: String::from("930A"),
-        security_code: captcha_solution.to_string(),
-        seat_prefer: SeatPref::Window,
-        form_mark: String::from(""),
-        class_type: CabinClass::Business,
-        inbound_date: None,
-        inbound_time: None,
-        to_train_id: None,
-        back_train_id: None,
-        adult_ticket_num: String::from("1F"),
-        child_ticket_num: String::from("0H"),
-        disabled_ticket_num: String::from("0W"),
-        elder_ticket_num: String::from("2E"),
-        college_ticket_num: String::from("0P"),
+        // TODO Test booking
+        Booking{
+            start_station: Station::Nangang,
+            dest_station: Station::Zuouing,
+            search_by: String::from("radio31"),
+            types_of_trip: Trip::OneWay,
+            // TODO test
+            // outbound_datetime: DateTime::parse_from_str("2025/01/21 10:00 AM", "%Y/%m/%d %H:%M")
+
+            // TODO test
+            outbound_date: String::from("2025/01/21"),
+            // outbound_date: String::from("2025/02/21"),
+
+            outbound_time: String::from("930A"),
+            security_code: captcha_solution.to_string(),
+            seat_prefer: SeatPref::Window,
+            form_mark: String::from(""),
+            class_type: CabinClass::Business,
+            inbound_date: None,
+            inbound_time: None,
+            to_train_id: None,
+            back_train_id: None,
+            adult_ticket_num: String::from("1F"),
+            child_ticket_num: String::from("0H"),
+            disabled_ticket_num: String::from("0W"),
+            elder_ticket_num: String::from("2E"),
+            college_ticket_num: String::from("0P"),
+        }
     };
     println!("booking: {:?}", booking);
     println!("booking (json): {}", serde_json::to_string(&booking).unwrap());
 
-    // TODO test
-    // let dt = NaiveDateTime::parse_from_str("2025/01/27 22:00", "%Y/%m/%d %H:%M").unwrap();
-    // println!("datetime: {}", dt);
-
     // Get available trains
-    let trains: Vec<Train> = {
+    let trains: Vec<TrainInfo> = {
         // Submit booking info
         let url = format!("https://irs.thsrc.com.tw/IMINT/;jsessionid={}?wicket:interface=:0:BookingS1Form::IFormSubmitListener", session_id);
         println!("submit_booking_form_url: {}", url);
@@ -288,7 +301,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let trains = document
             .select(&Selector::parse("label").unwrap())
             .map(|label| {
-                Train {
+                TrainInfo {
                     id: label.select(&Selector::parse("#QueryCode").unwrap()).next().unwrap().inner_html().parse().unwrap(),
                     depart: label.select(&Selector::parse("#QueryDeparture").unwrap()).next().unwrap().inner_html(),
                     arrive: label.select(&Selector::parse("#QueryArrival").unwrap()).next().unwrap().inner_html(),
@@ -299,12 +312,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             })
             .collect();
 
-        Ok::<Vec<Train>, ErrorMessages>(trains)
+        Ok::<Vec<TrainInfo>, ErrorMessages>(trains)
     }?;
     println!("trains: {:?}", trains);
 
     // Select train
-    {
+    let train_selection = {
         for (idx, train) in trains.iter().enumerate() {
             println!("{item_num}. {train_id:>4} {train_depart:>3}~{train_arrive} {train_travel_time:>3} {train_discount_str}", item_num = idx + 1, train_id = train.id, train_depart = train.depart, train_arrive = train.arrive, train_travel_time = train.travel_time, train_discount_str = train.discount_str);
         }
@@ -313,12 +326,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         io::stdin().read_line(&mut train_selection_str)?;
         let trimmed_input = train_selection_str.trim();
         let train_selection = if trimmed_input.is_empty() {
-            1
+            0
         } else {
-            trimmed_input.parse().unwrap()
+            trimmed_input.parse::<usize>().unwrap() - 1
         };
         println!("Selected train: {train_selection}");
-    }
+
+        TrainSelection {
+            selected_train: trains[train_selection].form_value.clone(),
+            form_mark: String::from(""),
+        }
+    };
+    println!("train_selection: {:?}", train_selection);
+    println!("train_selection (json): {}", serde_json::to_string(&train_selection).unwrap());
 
     // Submit train selection
     // {
