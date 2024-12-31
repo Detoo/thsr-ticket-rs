@@ -417,5 +417,41 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("ticket_confirmation: {:?}", ticket_confirmation);
     println!("ticket_confirmation (json): {}", serde_json::to_string(&ticket_confirmation).unwrap());
 
+    // Submit train selection and prepare ticket info
+    {
+        // Submit ticket confirmation
+        let response = client.post("https://irs.thsrc.com.tw/IMINT/?wicket:interface=:2:BookingS3Form::IFormSubmitListener")
+            .headers(gen_common_headers())
+            .form(&ticket_confirmation)
+            .send()?;
+        println!("submit ticket confirmation response: {:?}", response);
+        let response_text = response.text()?;
+        println!("submit ticket confirmation response text: {:?}", response_text);
+        assert_submission_errors(response_text.clone())?;
+
+        // Parse ticket
+        let document = Html::parse_document(&response_text);
+        println!("\n\n----------- Booking Results -----------");
+        println!("Ticket ID: {}", document.select(&Selector::parse("p.pnr-code > span:first-child").unwrap()).next().unwrap().inner_html());
+        println!("Total price: {}", document.select(&Selector::parse("#setTrainTotalPriceValue").unwrap()).next().unwrap().inner_html());
+        println!("---------------------------------------");
+        println!("    Date    From    Dest  Depart  Arrive   Train");
+        println!(
+            "{:<8}{:<8}{:<8}{:<8}{:<8}{:<8}",
+            document.select(&Selector::parse("span.date").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
+            document.select(&Selector::parse("p.departure-stn").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
+            document.select(&Selector::parse("p.arrival-stn").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
+            document.select(&Selector::parse("#setTrainDeparture0").unwrap()).next().unwrap().inner_html(),
+            document.select(&Selector::parse("#setTrainArrival0").unwrap()).next().unwrap().inner_html(),
+            document.select(&Selector::parse("#setTrainCode0").unwrap()).next().unwrap().inner_html(),
+        );
+        document.select(&Selector::parse("div.seat-label").unwrap())
+            .for_each(|elem| {
+                println!("{}", elem.text().collect::<Vec<_>>().join(""));
+            });
+
+        Ok::<(), ErrorMessages>(())
+    }?;
+
     Ok(())
 }
