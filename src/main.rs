@@ -102,24 +102,6 @@ struct Booking {
     college_ticket_num: String,
 }
 
-#[derive(Debug)]
-struct TrainInfo {
-    id: i16,
-    depart: String,
-    arrive: String,
-    travel_time: String,
-    discount_str: String,
-    form_value: String,
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-struct TrainSelection {
-    #[serde(rename = "TrainQueryDataViewPanel:TrainGroup")]
-    selected_train: String,
-    #[serde(default, rename = "BookingS2Form:hf:0")]
-    form_mark: String,
-}
-
 fn default_adult_ticket() -> String {
     "1F".to_string()
 }
@@ -138,6 +120,63 @@ fn default_elder_ticket() -> String {
 
 fn default_college_ticket() -> String {
     "0P".to_string()
+}
+
+#[derive(Debug)]
+struct TrainInfo {
+    id: i16,
+    depart: String,
+    arrive: String,
+    travel_time: String,
+    discount_str: String,
+    form_value: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct TrainSelection {
+    #[serde(rename = "TrainQueryDataViewPanel:TrainGroup")]
+    selected_train: String,
+    #[serde(default, rename = "BookingS2Form:hf:0")]
+    form_mark: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct TicketConfirmation {
+    #[serde(rename = "dummyId")]
+    personal_id: String,
+    #[serde(rename = "dummyPhone")]
+    phone_num: String,
+    #[serde(rename = "TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup")]
+    member_radio: String,
+    #[serde(default, rename = "BookingS3FormSP:hf:0")]
+    form_mark: String,
+    #[serde(default, rename = "idInputRadio")]
+    id_input_radio: i8,
+    #[serde(default = "default_1_i8", rename = "diffOver")]
+    diff_over: i8,
+    #[serde(default, rename = "email")]
+    email: String,
+    #[serde(default = "default_agree", rename = "agree")]
+    agree: String,
+    #[serde(default, rename = "isGoBackM")]
+    go_back_m: String,
+    #[serde(default, rename = "backHome")]
+    back_home: String,
+    #[serde(default = "default_1_i8", rename = "TgoError")]
+    tgo_error: i8,
+    // TODO Make it dynamic. Current implementation assumes 1 adult, 2 elder because the aliases are type and order dependent
+    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:1:passengerDataView2:passengerDataIdNumber")]
+    elder_id0: String,
+    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:2:passengerDataView2:passengerDataIdNumber")]
+    elder_id1: String,
+}
+
+fn default_1_i8() -> i8 {
+    1
+}
+
+fn default_agree() -> String {
+    "on".to_string()
 }
 
 #[derive(Debug)]
@@ -185,7 +224,7 @@ fn parse_discount(item: ElementRef) -> String {
     discounts.join(", ")
 }
 
-fn assert_errors(response_text: String) -> Result<(), ErrorMessages> {
+fn assert_submission_errors(response_text: String) -> Result<(), ErrorMessages> {
     let document = Html::parse_document(&response_text);
     let errors: Vec<String> = document
         .select(&Selector::parse("span.feedbackPanelERROR").unwrap())
@@ -244,7 +283,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let booking = {
         // TODO Get booking parameters either from presets or user input
         // TODO Fake the booking parameters for now
-        // TODO Use serde to model the booking parameters
 
         // TODO test
         // let dt = NaiveDateTime::parse_from_str("2025/01/27 22:00", "%Y/%m/%d %H:%M").unwrap();
@@ -282,7 +320,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("booking: {:?}", booking);
     println!("booking (json): {}", serde_json::to_string(&booking).unwrap());
 
-    // Get available trains
+    // Submit booking and get available trains
     let trains: Vec<TrainInfo> = {
         // Submit booking info
         let url = format!("https://irs.thsrc.com.tw/IMINT/;jsessionid={}?wicket:interface=:0:BookingS1Form::IFormSubmitListener", session_id);
@@ -294,7 +332,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("submit booking response: {:?}", response);
         let response_text = response.text()?;
         println!("submit booking response text: {:?}", response_text);
-        assert_errors(response_text.clone())?;
+        assert_submission_errors(response_text.clone())?;
 
         // Parse train info
         let document = Html::parse_document(&response_text);
@@ -340,13 +378,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("train_selection: {:?}", train_selection);
     println!("train_selection (json): {}", serde_json::to_string(&train_selection).unwrap());
 
-    // Submit train selection
-    // {
-    //     let response = client
-    //         .get(booking_page_url)
-    //         .headers(gen_common_headers())
-    //         .send()?;
-    // }
+    // Submit train selection and prepare ticket info
+    let ticket_confirmation = {
+        // Submit train selection info
+        let response = client.post("https://irs.thsrc.com.tw/IMINT/?wicket:interface=:1:BookingS2Form::IFormSubmitListener")
+            .headers(gen_common_headers())
+            .form(&train_selection)
+            .send()?;
+        println!("submit train selection response: {:?}", response);
+        let response_text = response.text()?;
+        println!("submit train selection response text: {:?}", response_text);
+        assert_submission_errors(response_text.clone())?;
+
+        // Prepare ticket info
+        let document = Html::parse_document(&response_text);
+        // TODO Get parameters either from presets or user input
+        // TODO Fake the booking parameters for now
+        Ok::<TicketConfirmation, ErrorMessages>(
+            TicketConfirmation {
+                personal_id: "".to_string(),
+                phone_num: "".to_string(),
+                member_radio: document
+                    .select(&Selector::parse(r#"input[name="TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup"][checked]"#).unwrap())
+                    .next().unwrap().value().attr("value").unwrap().to_string(),
+                form_mark: "".to_string(),
+                id_input_radio: 0,
+                diff_over: 1,
+                email: "".to_string(),
+                agree: "on".to_string(),
+                go_back_m: "".to_string(),
+                back_home: "".to_string(),
+                tgo_error: 1,
+                elder_id0: "".to_string(),
+                elder_id1: "".to_string(),
+            }
+        )
+    }?;
+    println!("ticket_confirmation: {:?}", ticket_confirmation);
+    println!("ticket_confirmation (json): {}", serde_json::to_string(&ticket_confirmation).unwrap());
 
     Ok(())
 }
