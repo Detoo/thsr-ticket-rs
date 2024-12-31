@@ -1,5 +1,6 @@
 use reqwest::blocking::Client;
-use std::{fs::File, io::{self, Write}};
+use std::{fmt, fs::File, io::{self, Write}};
+use std::error::Error;
 use std::path::Path;
 use chrono::NaiveDateTime;
 use opener;
@@ -121,7 +122,20 @@ fn default_college_ticket() -> String {
     "0P".to_string()
 }
 
-fn download_captcha(client: &Client, url: &str, headers: HeaderMap, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Debug)]
+struct ErrorMessages {
+    errors: Vec<String>,
+}
+
+impl fmt::Display for ErrorMessages {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.errors)
+    }
+}
+
+impl Error for ErrorMessages {}
+
+fn download_captcha(client: &Client, url: &str, headers: HeaderMap, output_path: &Path) -> Result<(), Box<dyn Error>> {
     let response = client.get(url).headers(headers).send()?;
     let bytes = response.bytes()?;
 
@@ -142,7 +156,20 @@ fn gen_common_headers() -> HeaderMap {
     headers.clone()
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn assert_errors(response_text: String) -> Result<(), ErrorMessages> {
+    let document = Html::parse_document(&response_text);
+    let errors: Vec<String> = document
+        .select(&Selector::parse("span.feedbackPanelERROR").unwrap())
+        .filter_map(|element| element.text().next().map(|text| text.to_string()))
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ErrorMessages{ errors })
+    }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::builder()
         .redirect(Policy::default())
         .cookie_store(true)
@@ -232,13 +259,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("submit booking response: {:?}", response);
         let response_text = response.text()?;
         println!("submit booking response text: {:?}", response_text);
-        let document = Html::parse_document(&response_text);
-        let errors: Vec<String> = document
-            .select(&Selector::parse("span.feedbackPanelERROR").unwrap())
-            .filter_map(|element| element.text().next().map(|text| text.to_string()))
-            .collect();
-        println!("got errors: {:?}", errors);
-    }
+        assert_errors(response_text)?;
+        Ok::<(), ErrorMessages>(())
+    }?;
 
     Ok(())
 }
