@@ -6,7 +6,7 @@ use chrono::NaiveDateTime;
 use opener;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, HOST, USER_AGENT};
 use reqwest::redirect::Policy;
-use scraper::{ElementRef, Html, Selector};
+use scraper::{Element, ElementRef, Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
@@ -368,7 +368,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             trimmed_input.parse::<usize>().unwrap() - 1
         };
-        println!("Selected train: {train_selection}");
+        println!("Selected train: {}", train_selection + 1);
 
         TrainSelection {
             selected_train: trains[train_selection].form_value.clone(),
@@ -435,19 +435,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Ticket ID: {}", document.select(&Selector::parse("p.pnr-code > span:first-child").unwrap()).next().unwrap().inner_html());
         println!("Total price: {}", document.select(&Selector::parse("#setTrainTotalPriceValue").unwrap()).next().unwrap().inner_html());
         println!("---------------------------------------");
-        println!("    Date    From    Dest  Depart  Arrive   Train");
+        println!("Date    From   Dest    Depart  Arrive  Train");
         println!(
-            "{:<8}{:<8}{:<8}{:<8}{:<8}{:<8}",
-            document.select(&Selector::parse("span.date").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
-            document.select(&Selector::parse("p.departure-stn").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
-            document.select(&Selector::parse("p.arrival-stn").unwrap()).next().unwrap().text().collect::<Vec<_>>().join(""),
+            "{:<8}{:<6}{:<6}{:<8}{:<8}{:<8}",
+            document.select(&Selector::parse("span.date > span").unwrap()).next().unwrap().inner_html(),
+            document.select(&Selector::parse("p.departure-stn > span").unwrap()).next().unwrap().inner_html(),
+            document.select(&Selector::parse("p.arrival-stn > span").unwrap()).next().unwrap().inner_html(),
             document.select(&Selector::parse("#setTrainDeparture0").unwrap()).next().unwrap().inner_html(),
             document.select(&Selector::parse("#setTrainArrival0").unwrap()).next().unwrap().inner_html(),
             document.select(&Selector::parse("#setTrainCode0").unwrap()).next().unwrap().inner_html(),
         );
-        document.select(&Selector::parse("div.seat-label").unwrap())
+        let seat_class = document.select(&Selector::parse("p.info-title").unwrap())
+            .find(|elem| { elem.inner_html() == "車廂" }).unwrap()
+            .next_sibling_element().unwrap()
+            .select(&Selector::parse("span").unwrap())
+            .next().unwrap().inner_html();
+        document.select(&Selector::parse("div.seat-label > span").unwrap())
             .for_each(|elem| {
-                println!("{}", elem.text().collect::<Vec<_>>().join(""));
+                println!("{seat_class} {}", elem.inner_html());
             });
 
         Ok::<(), ErrorMessages>(())
