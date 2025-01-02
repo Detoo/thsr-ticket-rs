@@ -11,6 +11,7 @@ use scraper::{Element, Html, Selector};
 use std::error::Error;
 use std::path::Path;
 use std::{fs::File, io::{self, Write}};
+use log::{debug, LevelFilter};
 
 struct App {
     client: Client,
@@ -102,14 +103,14 @@ impl App {
     fn submit_booking_and_get_trains(&self, session_id: String, booking: Booking) -> Result<Vec<TrainInfo>, Box<dyn Error>> {
         // Submit booking info
         let url = gen_booking_url(session_id);
-        println!("submit_booking_form_url: {}", url);
+        debug!("submit_booking_form_url: {}", url);
         let response = self.client.post(url)
             .headers(gen_common_headers())
             .form(&booking)
             .send()?;
-        println!("submit booking response: {:?}", response);
+        debug!("submit booking response: {:?}", response);
         let response_text = response.text()?;
-        println!("submit booking response text: {:?}", response_text);
+        debug!("submit booking response text: {:?}", response_text);
         assert_submission_errors(response_text.clone())?;
 
         // Parse train info
@@ -132,8 +133,9 @@ impl App {
     }
 
     fn select_train(&self, trains: Vec<TrainInfo>) -> Result<TrainSelection, Box<dyn Error>> {
+        println!("Option  Train   Depart  Arrive  Duration  Discount");
         for (idx, train) in trains.iter().enumerate() {
-            println!("{item_num}. {train_id:>4} {train_depart:>3}~{train_arrive} {train_travel_time:>3} {train_discount_str}", item_num = idx + 1, train_id = train.id, train_depart = train.depart, train_arrive = train.arrive, train_travel_time = train.travel_time, train_discount_str = train.discount_str);
+            println!("{item_str:<8}{train_id:<8}{train_depart:<8}{train_arrive:<8}{train_travel_time:<10}{train_discount_str}", item_str = format!("({})", idx + 1), train_id = train.id, train_depart = train.depart, train_arrive = train.arrive, train_travel_time = train.travel_time, train_discount_str = train.discount_str);
         }
         println!("Enter selection (default: 1): ");
         let mut train_selection_str = String::new();
@@ -144,7 +146,7 @@ impl App {
         } else {
             trimmed_input.parse::<usize>().unwrap() - 1
         };
-        println!("Selected train: {}", train_selection + 1);
+        debug!("Selected option: {}", train_selection + 1);
 
         Ok(TrainSelection {
             selected_train: trains[train_selection].form_value.clone(),
@@ -158,9 +160,9 @@ impl App {
             .headers(gen_common_headers())
             .form(&train_selection)
             .send()?;
-        println!("submit train selection response: {:?}", response);
+        debug!("submit train selection response: {:?}", response);
         let response_text = response.text()?;
-        println!("submit train selection response text: {:?}", response_text);
+        debug!("submit train selection response text: {:?}", response_text);
         assert_submission_errors(response_text.clone())?;
 
         // Prepare ticket info
@@ -194,9 +196,9 @@ impl App {
             .headers(gen_common_headers())
             .form(&ticket_confirmation)
             .send()?;
-        println!("submit ticket confirmation response: {:?}", response);
+        debug!("submit ticket confirmation response: {:?}", response);
         let response_text = response.text()?;
-        println!("submit ticket confirmation response text: {:?}", response_text);
+        debug!("submit ticket confirmation response text: {:?}", response_text);
         assert_submission_errors(response_text.clone())?;
 
         // Parse ticket
@@ -230,33 +232,35 @@ impl App {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    log::set_max_level(LevelFilter::Info);
+
     // Start a new session
     let mut app = App::new()?;
     let session_id = app.start_session_with_captcha()?;
-    println!("JSESSIONID: {}", session_id);
+    debug!("JSESSIONID: {}", session_id);
 
     // Get user input for CAPTCHA
     let captcha_solution = app.solve_captcha()?;
-    println!("CAPTCHA solution entered: {}", captcha_solution);
+    debug!("CAPTCHA solution entered: {}", captcha_solution);
 
     // Prepare booking info
     let booking = app.prepare_booking(captcha_solution)?;
-    println!("booking: {:?}", booking);
-    println!("booking (json): {}", serde_json::to_string(&booking).unwrap());
+    debug!("booking: {:?}", booking);
+    debug!("booking (json): {}", serde_json::to_string(&booking).unwrap());
 
     // Submit booking and get available trains
     let trains = app.submit_booking_and_get_trains(session_id, booking)?;
-    println!("trains: {:?}", trains);
+    debug!("trains: {:?}", trains);
 
     // Select train
     let train_selection = app.select_train(trains)?;
-    println!("train_selection: {:?}", train_selection);
-    println!("train_selection (json): {}", serde_json::to_string(&train_selection).unwrap());
+    debug!("train_selection: {:?}", train_selection);
+    debug!("train_selection (json): {}", serde_json::to_string(&train_selection).unwrap());
 
     // Submit train selection and prepare ticket info
     let ticket_confirmation = app.submit_train_selection(train_selection)?;
-    println!("ticket_confirmation: {:?}", ticket_confirmation);
-    println!("ticket_confirmation (json): {}", serde_json::to_string(&ticket_confirmation).unwrap());
+    debug!("ticket_confirmation: {:?}", ticket_confirmation);
+    debug!("ticket_confirmation (json): {}", serde_json::to_string(&ticket_confirmation).unwrap());
 
     // Submit train selection and prepare ticket info
     app.submit_ticket_confirmation(ticket_confirmation)?;
