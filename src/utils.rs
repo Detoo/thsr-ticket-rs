@@ -196,21 +196,25 @@ pub fn assert_submission_errors(response_text: String) -> Result<(), ErrorMessag
 pub fn print_presets(presets: &Vec<Preset>) {
     presets.iter().enumerate().for_each(
         |(idx, preset)| {
-            println!("Preset #{option_num}", option_num=idx + 1);
-            println!("  Personal ID:         {}", preset.ticket_confirmation.personal_id);
-            println!("  Phone:               {}", preset.ticket_confirmation.phone_num);
-            println!("  Depart Station:      {:?}", preset.booking.start_station);
-            println!("  Destination Station: {:?}", preset.booking.dest_station);
-            println!("  Depart Date:         {}", preset.booking.outbound_date);
-            println!("  Depart Time:         {}", preset.booking.outbound_time);
-            println!("  Cabin Class:         {:?}", preset.booking.class_type);
-            println!("  Seat Preference:     {:?}", preset.booking.seat_prefer);
-            // TODO This is hard-coded for now
-            println!("  Adult ticket number: {}", preset.booking.adult_ticket_num);
-            println!("  Elder ticket number: {}", preset.booking.elder_ticket_num);
-            println!("  Elder ID #1:         {}", preset.ticket_confirmation.elder_id0);
-            println!("  Elder ID #2:         {}", preset.ticket_confirmation.elder_id1);
-            println!();
+            print_preset(idx + 1, &preset)
         }
     );
+}
+
+pub fn print_preset(preset_num: usize, preset: &Preset) {
+    println!("Preset #{option_num}", option_num=preset_num);
+    println!("  Personal ID:         {}", preset.ticket_confirmation.personal_id);
+    println!("  Phone:               {}", preset.ticket_confirmation.phone_num);
+    println!("  Depart Station:      {:?}", preset.booking.start_station);
+    println!("  Destination Station: {:?}", preset.booking.dest_station);
+    println!("  Depart Date:         {}", preset.booking.outbound_date);
+    println!("  Depart Time:         {}", preset.booking.outbound_time);
+    println!("  Cabin Class:         {:?}", preset.booking.class_type);
+    println!("  Seat Preference:     {:?}", preset.booking.seat_prefer);
+    // TODO This is hard-coded for now
+    println!("  Adult ticket number: {}", preset.booking.adult_ticket_num);
+    println!("  Elder ticket number: {}", preset.booking.elder_ticket_num);
+    println!("  Elder ID #1:         {}", preset.ticket_confirmation.elder_id0);
+    println!("  Elder ID #2:         {}", preset.ticket_confirmation.elder_id1);
+    println!();
 }

@@ -3,7 +3,7 @@ mod models;
 mod utils;
 
 use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, TrainInfo, TrainSelection};
-use crate::utils::{ask_for_class, ask_for_date, ask_for_string_with_descriptions, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_presets};
+use crate::utils::{ask_for_class, ask_for_date, ask_for_string_with_descriptions, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_presets, print_preset};
 use opener;
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
@@ -14,9 +14,20 @@ use std::{fs::File, io::{self, Write}};
 use std::io::BufReader;
 use chrono_tz::Tz;
 use chrono_tz::Tz::Asia__Taipei;
+use clap::{arg, Parser};
 use log::debug;
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Auto-select preset #
+    #[arg(short, long)]
+    preset: Option<usize>,
+}
+
+#[derive(Debug)]
 struct App {
+    args: Args,
     client: Client,
     tz: Tz,
     booking_worksheet: Option<BookingPersisted>,
@@ -26,6 +37,7 @@ struct App {
 impl App {
     fn new() -> Result<Self, Box<dyn Error>> {
         Ok(Self {
+            args: Args::parse(),
             client: Client::builder()
                 .redirect(Policy::default())
                 .cookie_store(true)
@@ -40,25 +52,39 @@ impl App {
         // Load presets
         let presets = serde_json::from_reader::<_, Vec<Preset>>(BufReader::new(File::open(configs::PRESETS_PATH)?))?;
 
-        if presets.len() > 0 {
-            // Ask for preset selection
-            print_presets(&presets);
+        match self.args.preset {
+            Some(preset_num) => {
+                // Load the preset if specified
+                println!("Auto-select preset:");
+                let preset = &presets[preset_num - 1];
+                print_preset(preset_num, preset);
+                self.load_preset(preset);
+            },
+            None => {
+                // Otherwise, only ask user for it if available
+                if presets.len() > 0 {
+                    // Ask for preset selection
+                    print_presets(&presets);
 
-            println!("Select the preset to load (default: ask for new info):");
-            let mut preset_idx_str = String::new();
-            io::stdin().read_line(&mut preset_idx_str)?;
-            let preset_idx_str_trimmed = preset_idx_str.trim().to_string();
+                    println!("Select the preset to load (default: ask for new info):");
+                    let mut preset_idx_str = String::new();
+                    io::stdin().read_line(&mut preset_idx_str)?;
+                    let preset_idx_str_trimmed = preset_idx_str.trim().to_string();
 
-            // If user selected a preset
-            if preset_idx_str_trimmed.len() > 0 {
-                // Use the selected preset
-                let preset = &presets[preset_idx_str_trimmed.parse::<usize>()? - 1];
-                self.booking_worksheet = Some(preset.booking.clone());
-                self.ticket_confirmation_worksheet = Some(preset.ticket_confirmation.clone());
+                    // If user selected a preset
+                    if preset_idx_str_trimmed.len() > 0 {
+                        self.load_preset(&presets[preset_idx_str_trimmed.parse::<usize>()? - 1]);
+                    }
+                }
             }
-        }
+        };
 
         Ok(())
+    }
+
+    fn load_preset(&mut self, preset: &Preset) {
+        self.booking_worksheet = Some(preset.booking.clone());
+        self.ticket_confirmation_worksheet = Some(preset.ticket_confirmation.clone());
     }
 
     fn start_session_with_captcha(&mut self) -> Result<BookingFormParams, Box<dyn Error>> {
@@ -281,6 +307,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start a new session
     let mut app = App::new()?;
+    debug!("app inited: {:?}", app);
 
     app.prepare_preset()?;
 
