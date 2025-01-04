@@ -1,0 +1,23 @@
+[
+  {
+    "booking": {
+      "selectStartStation": 1,
+      "selectDestinationStation": 12,
+      "toTimeInputField": "2025/01/04",
+      "toTimeTable": "930A",
+      "seatCon:seatRadioGroup": 0,
+      "trainCon:trainRadioGroup": 0,
+      "ticketPanel:rows:0:ticketAmount": "1F",
+      "ticketPanel:rows:1:ticketAmount": "0H",
+      "ticketPanel:rows:2:ticketAmount": "0W",
+      "ticketPanel:rows:3:ticketAmount": "0E",
+      "ticketPanel:rows:4:ticketAmount": "0P"
+    },
+    "ticket_confirmation": {
+      "dummyId": "A111111111",
+      "dummyPhone": "",
+      "TicketPassengerInfoInputPanel:passengerDataView:1:passengerDataView2:passengerDataIdNumber": "",
+      "TicketPassengerInfoInputPanel:passengerDataView:2:passengerDataView2:passengerDataIdNumber": ""
+    }
+  }
+]
