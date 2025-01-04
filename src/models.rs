@@ -2,8 +2,9 @@ use std::error::Error;
 use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use strum::{EnumIter, FromRepr, Display};
 
-#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, EnumIter, FromRepr, Display, Clone)]
 #[repr(u8)]
 pub enum Station {
     Nangang = 1,
@@ -27,7 +28,7 @@ pub enum Trip {
     RoundTrip,
 }
 
-#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, Default)]
+#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, EnumIter, FromRepr, Display, Default, Clone)]
 #[repr(u8)]
 pub enum CabinClass {
     #[default]
@@ -35,7 +36,7 @@ pub enum CabinClass {
     Business,
 }
 
-#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, EnumIter, FromRepr, Display, Clone)]
 #[repr(u8)]
 pub enum SeatPref {
     NoPref = 0,
@@ -43,44 +44,20 @@ pub enum SeatPref {
     Aisle,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct Booking {
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct BookingPersisted {
     #[serde(rename = "selectStartStation")]
     pub start_station: Station,
     #[serde(rename = "selectDestinationStation")]
     pub dest_station: Station,
-    #[serde(rename = "bookingMethod")]
-    pub search_by: String,
-    #[serde(rename = "tripCon:typesoftrip")]
-    pub types_of_trip: Trip,
-
-    // TODO Implement more sophisticated logic to serialize datetime as a chrono NaiveDateTime instance
-    // outbound_datetime: NaiveDateTime,
     #[serde(rename = "toTimeInputField")]
     pub outbound_date: String,
     #[serde(rename = "toTimeTable")]
     pub outbound_time: String,
-
-    #[serde(rename = "homeCaptcha:securityCode")]
-    pub security_code: String,
     #[serde(rename = "seatCon:seatRadioGroup")]
     pub seat_prefer: SeatPref,
-    #[serde(default, rename = "BookingS1Form:hf:0")]
-    pub form_mark: String,
     #[serde(default, rename = "trainCon:trainRadioGroup")]
     pub class_type: CabinClass,
-
-    // TODO Implement more sophisticated logic to serialize datetime as a chrono NaiveDateTime instance
-    // inbound_datetime: NaiveDateTime,
-    #[serde(default, rename = "backTimeInputField")]
-    pub inbound_date: Option<String>,
-    #[serde(default, rename = "backTimeTable")]
-    pub inbound_time: Option<String>,
-
-    #[serde(default, rename = "toTrainIDInputField")]
-    pub to_train_id: Option<i16>,
-    #[serde(default, rename = "backTrainIDInputField")]
-    pub back_train_id: Option<i16>,
 
     // TODO There must be a better way to represent this
     #[serde(default = "default_adult_ticket", rename = "ticketPanel:rows:0:ticketAmount")]
@@ -93,6 +70,29 @@ pub struct Booking {
     pub elder_ticket_num: String,
     #[serde(default = "default_college_ticket", rename = "ticketPanel:rows:4:ticketAmount")]
     pub college_ticket_num: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Booking {
+    #[serde(flatten)]
+    pub persisted: BookingPersisted,
+
+    #[serde(rename = "bookingMethod")]
+    pub search_by: String,
+    #[serde(rename = "tripCon:typesoftrip")]
+    pub types_of_trip: Trip,
+    #[serde(rename = "homeCaptcha:securityCode")]
+    pub security_code: String,
+    #[serde(default, rename = "BookingS1Form:hf:0")]
+    pub form_mark: String,
+    #[serde(default, rename = "backTimeInputField")]
+    pub inbound_date: Option<String>,
+    #[serde(default, rename = "backTimeTable")]
+    pub inbound_time: Option<String>,
+    #[serde(default, rename = "toTrainIDInputField")]
+    pub to_train_id: Option<i16>,
+    #[serde(default, rename = "backTrainIDInputField")]
+    pub back_train_id: Option<i16>,
 }
 
 fn default_adult_ticket() -> String {
@@ -133,12 +133,24 @@ pub struct TrainSelection {
     pub form_mark: String,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct TicketConfirmation {
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct TicketConfirmationPersisted {
     #[serde(rename = "dummyId")]
     pub personal_id: String,
     #[serde(rename = "dummyPhone")]
     pub phone_num: String,
+
+    // TODO Make it dynamic. Current implementation assumes 1 adult, 2 elder because the aliases are type and order dependent
+    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:1:passengerDataView2:passengerDataIdNumber")]
+    pub elder_id0: String,
+    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:2:passengerDataView2:passengerDataIdNumber")]
+    pub elder_id1: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct TicketConfirmation {
+    #[serde(flatten)]
+    pub persisted: TicketConfirmationPersisted,
     #[serde(rename = "TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup")]
     pub member_radio: String,
     #[serde(default, rename = "BookingS3FormSP:hf:0")]
@@ -157,11 +169,6 @@ pub struct TicketConfirmation {
     pub back_home: String,
     #[serde(default = "default_1_i8", rename = "TgoError")]
     pub tgo_error: i8,
-    // TODO Make it dynamic. Current implementation assumes 1 adult, 2 elder because the aliases are type and order dependent
-    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:1:passengerDataView2:passengerDataIdNumber")]
-    pub elder_id0: String,
-    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:2:passengerDataView2:passengerDataIdNumber")]
-    pub elder_id1: String,
 }
 
 fn default_1_i8() -> i8 {
@@ -170,6 +177,17 @@ fn default_1_i8() -> i8 {
 
 fn default_agree() -> String {
     "on".to_string()
+}
+
+// TODO Dynamically disable renaming in Preset serialization
+//  We don't want the field names being renamed when saving as a preset because it actually hurts readability.
+//  Unfortunately serde currently does not support dynamic disabling renaming,
+//  so we are stuck with it for now.
+//  Note: in case it wasn't clear, we can't get rid of the renaming either because we must submit the form using those names.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Preset {
+    pub booking: BookingPersisted,
+    pub ticket_confirmation: TicketConfirmationPersisted,
 }
 
 #[derive(Debug)]

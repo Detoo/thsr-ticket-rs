@@ -2,8 +2,8 @@ mod configs;
 mod models;
 mod utils;
 
-use crate::models::{Booking, CabinClass, SeatPref, Station, TicketConfirmation, TrainInfo, TrainSelection, Trip};
-use crate::utils::{assert_submission_errors, gen_booking_url, gen_common_headers, parse_discount};
+use crate::models::{Booking, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationPersisted, TrainInfo, TrainSelection};
+use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, parse_discount, print_presets};
 use opener;
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
@@ -11,10 +11,22 @@ use scraper::{Element, Html, Selector};
 use std::error::Error;
 use std::path::Path;
 use std::{fs::File, io::{self, Write}};
-use log::{debug, LevelFilter};
+use std::io::BufReader;
+use chrono_tz::Tz;
+use chrono_tz::Tz::Asia__Taipei;
+use log::debug;
 
 struct App {
     client: Client,
+    tz: Tz,
+    booking_worksheet: Option<BookingPersisted>,
+    ticket_confirmation_worksheet: Option<TicketConfirmationPersisted>,
+}
+
+struct BookingFormParams {
+    session_id: String,
+    search_by_time_value: String,
+    time_options: Vec<String>,
 }
 
 impl App {
@@ -24,10 +36,38 @@ impl App {
                 .redirect(Policy::default())
                 .cookie_store(true)
                 .build()?,
+            tz: Asia__Taipei,
+            booking_worksheet: None,
+            ticket_confirmation_worksheet: None,
         })
     }
 
-    fn start_session_with_captcha(&mut self) -> Result<String, Box<dyn Error>> {
+    fn prepare_preset(&mut self) -> Result<(), Box<dyn Error>> {
+        // Load presets
+        let presets = serde_json::from_reader::<_, Vec<Preset>>(BufReader::new(File::open(configs::PRESETS_PATH)?))?;
+
+        if presets.len() > 0 {
+            // Ask for preset selection
+            print_presets(&presets);
+
+            println!("Select the preset to load (default: ask for new info):");
+            let mut preset_idx_str = String::new();
+            io::stdin().read_line(&mut preset_idx_str)?;
+            let preset_idx_str_trimmed = preset_idx_str.trim().to_string();
+
+            // If user selected a preset
+            if preset_idx_str_trimmed.len() > 0 {
+                // Use the selected preset
+                let preset = &presets[preset_idx_str_trimmed.parse::<usize>()? - 1];
+                self.booking_worksheet = Some(preset.booking.clone());
+                self.ticket_confirmation_worksheet = Some(preset.ticket_confirmation.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn start_session_with_captcha(&mut self) -> Result<BookingFormParams, Box<dyn Error>> {
         let response = self.client
             .get(configs::BOOKING_PAGE_URL)
             .headers(gen_common_headers())
@@ -36,9 +76,21 @@ impl App {
         // Find session ID
         let session_id = response.cookies().find(|cookie| cookie.name() == "JSESSIONID").unwrap().value().to_string();
 
-        // Show CAPTCHA image
         let response_text = response.text()?;
         let document = Html::parse_document(&response_text);
+
+        // Find all essential parameters
+        let search_by_time_value = document.select(&Selector::parse(r#"input[name="bookingMethod"][data-target="search-by-time"]"#).unwrap()).next().unwrap().value().attr("value").unwrap().to_string();
+        debug!("search-by-time parameter: {search_by_time_value}");
+        let time_options: Vec<String> = document
+            .select(&Selector::parse(r#"select[name="toTimeTable"] > option:not([selected])"#).unwrap())
+            .map(|elem| {
+                elem.value().attr("value").unwrap().to_string()
+            })
+            .collect();
+        debug!("time_options: {:?}", time_options);
+
+        // Show CAPTCHA image
         let selector = Selector::parse("#BookingS1Form_homeCaptcha_passCode").unwrap();
         let element = document.select(&selector).next().expect("Couldn't find the captcha element");
         let src = element.value().attr("src").expect("Couldn't find the captcha source url");
@@ -51,7 +103,11 @@ impl App {
         file.write_all(&bytes)?;
         opener::open(path)?;
 
-        Ok(session_id)
+        Ok(BookingFormParams{
+            session_id,
+            search_by_time_value,
+            time_options,
+        })
     }
 
     fn solve_captcha(&mut self) -> Result<String, Box<dyn Error>> {
@@ -62,42 +118,35 @@ impl App {
         Ok(captcha_solution.trim().to_string())
     }
 
-    fn prepare_booking(&mut self, captcha_solution: String) -> Result<Booking, Box<dyn Error>> {
-        // TODO Get booking parameters either from presets or user input
-        // TODO Fake the booking parameters for now
+    fn prepare_booking(&mut self, booking_form_params: &BookingFormParams, captcha_solution: String) -> Result<Booking, Box<dyn Error>> {
+        match &self.booking_worksheet {
+            // Preset exists
+            Some(booking_worksheet) => Ok(gen_booking(
+                booking_worksheet,
+                booking_form_params,
+                captcha_solution,
+            )),
+            // No preset, ask the user for more info
+            None => Ok(gen_booking(
+                &BookingPersisted {
+                    start_station: ask_for_station("departure", Station::Nangang)?,
+                    dest_station: ask_for_station("destination", Station::Zuouing)?,
+                    outbound_date: format_date(ask_for_date("departure", &self.tz)?),
+                    outbound_time: ask_for_time("departure", booking_form_params)?,
+                    seat_prefer: ask_for_seat(SeatPref::NoPref)?,
+                    class_type: ask_for_class(CabinClass::Standard)?,
+                    adult_ticket_num: ask_for_ticket_num("F", "adult", 1)?,
+                    elder_ticket_num: ask_for_ticket_num("E", "elder", 0)?,
 
-        // TODO test
-        // let dt = NaiveDateTime::parse_from_str("2025/01/27 22:00", "%Y/%m/%d %H:%M").unwrap();
-        // println!("datetime: {}", dt);
-
-        // TODO Test booking
-        Ok(Booking{
-            start_station: Station::Nangang,
-            dest_station: Station::Zuouing,
-            search_by: String::from("radio31"),
-            types_of_trip: Trip::OneWay,
-            // TODO test
-            // outbound_datetime: DateTime::parse_from_str("2025/01/21 10:00 AM", "%Y/%m/%d %H:%M")
-
-            // TODO test
-            outbound_date: String::from("2025/01/21"),
-            // outbound_date: String::from("2025/02/21"),
-
-            outbound_time: String::from("930A"),
-            security_code: captcha_solution,
-            seat_prefer: SeatPref::Window,
-            form_mark: String::from(""),
-            class_type: CabinClass::Business,
-            inbound_date: None,
-            inbound_time: None,
-            to_train_id: None,
-            back_train_id: None,
-            adult_ticket_num: String::from("1F"),
-            child_ticket_num: String::from("0H"),
-            disabled_ticket_num: String::from("0W"),
-            elder_ticket_num: String::from("2E"),
-            college_ticket_num: String::from("0P"),
-        })
+                    // TODO Currently not supported
+                    child_ticket_num: "0H".to_string(),
+                    disabled_ticket_num: "0W".to_string(),
+                    college_ticket_num: "0F".to_string(),
+                },
+                booking_form_params,
+                captcha_solution,
+            )),
+        }
     }
 
     fn submit_booking_and_get_trains(&self, session_id: String, booking: Booking) -> Result<Vec<TrainInfo>, Box<dyn Error>> {
@@ -171,8 +220,12 @@ impl App {
         // TODO Fake the booking parameters for now
         Ok(
             TicketConfirmation {
-                personal_id: "".to_string(),
-                phone_num: "".to_string(),
+                persisted: TicketConfirmationPersisted {
+                    personal_id: "".to_string(),
+                    phone_num: "".to_string(),
+                    elder_id0: "".to_string(),
+                    elder_id1: "".to_string(),
+                },
                 member_radio: document
                     .select(&Selector::parse(r#"input[name="TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup"][checked]"#).unwrap())
                     .next().unwrap().value().attr("value").unwrap().to_string(),
@@ -184,8 +237,6 @@ impl App {
                 go_back_m: "".to_string(),
                 back_home: "".to_string(),
                 tgo_error: 1,
-                elder_id0: "".to_string(),
-                elder_id1: "".to_string(),
             }
         )
     }
@@ -232,24 +283,28 @@ impl App {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    log::set_max_level(LevelFilter::Info);
+    // Control logging level through env var `RUST_LOG`
+    env_logger::init();
 
     // Start a new session
     let mut app = App::new()?;
-    let session_id = app.start_session_with_captcha()?;
-    debug!("JSESSIONID: {}", session_id);
+
+    app.prepare_preset()?;
+
+    let booking_form_params = app.start_session_with_captcha()?;
+    debug!("JSESSIONID: {}", booking_form_params.session_id);
 
     // Get user input for CAPTCHA
     let captcha_solution = app.solve_captcha()?;
     debug!("CAPTCHA solution entered: {}", captcha_solution);
 
     // Prepare booking info
-    let booking = app.prepare_booking(captcha_solution)?;
+    let booking = app.prepare_booking(&booking_form_params, captcha_solution)?;
     debug!("booking: {:?}", booking);
     debug!("booking (json): {}", serde_json::to_string(&booking).unwrap());
 
     // Submit booking and get available trains
-    let trains = app.submit_booking_and_get_trains(session_id, booking)?;
+    let trains = app.submit_booking_and_get_trains(booking_form_params.session_id, booking)?;
     debug!("trains: {:?}", trains);
 
     // Select train
