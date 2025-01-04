@@ -3,19 +3,19 @@ mod models;
 mod utils;
 
 use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, TrainInfo, TrainSelection};
-use crate::utils::{ask_for_class, ask_for_date, ask_for_string_with_descriptions, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_presets, print_preset};
+use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_string_with_descriptions, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_preset, print_presets};
+use chrono_tz::Tz;
+use chrono_tz::Tz::Asia__Taipei;
+use clap::{arg, Parser};
+use log::debug;
 use opener;
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
 use scraper::{Element, Html, Selector};
 use std::error::Error;
-use std::path::Path;
-use std::{fs::File, io::{self, Write}};
 use std::io::BufReader;
-use chrono_tz::Tz;
-use chrono_tz::Tz::Asia__Taipei;
-use clap::{arg, Parser};
-use log::debug;
+use std::path::Path;
+use std::{fs::create_dir_all, fs::File, io::{self, Write}};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -128,6 +128,7 @@ impl App {
         let response = self.client.get(captcha_url).headers(gen_common_headers()).send()?;
         let bytes = response.bytes()?;
         let path = Path::new(configs::CAPTCHA_LOCAL_PATH);
+        create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(path)?;
         file.write_all(&bytes)?;
         opener::open(path)?;
