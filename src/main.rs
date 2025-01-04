@@ -2,8 +2,8 @@ mod configs;
 mod models;
 mod utils;
 
-use crate::models::{Booking, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationPersisted, TrainInfo, TrainSelection};
-use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, parse_discount, print_presets};
+use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, TrainInfo, TrainSelection};
+use crate::utils::{ask_for_class, ask_for_date, ask_for_string_with_descriptions, ask_for_seat, ask_for_station, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_presets};
 use opener;
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
@@ -21,12 +21,6 @@ struct App {
     tz: Tz,
     booking_worksheet: Option<BookingPersisted>,
     ticket_confirmation_worksheet: Option<TicketConfirmationPersisted>,
-}
-
-struct BookingFormParams {
-    session_id: String,
-    search_by_time_value: String,
-    time_options: Vec<String>,
 }
 
 impl App {
@@ -214,31 +208,30 @@ impl App {
         debug!("submit train selection response text: {:?}", response_text);
         assert_submission_errors(response_text.clone())?;
 
-        // Prepare ticket info
         let document = Html::parse_document(&response_text);
-        // TODO Get parameters either from presets or user input
-        // TODO Fake the booking parameters for now
-        Ok(
-            TicketConfirmation {
-                persisted: TicketConfirmationPersisted {
-                    personal_id: "".to_string(),
-                    phone_num: "".to_string(),
-                    elder_id0: "".to_string(),
-                    elder_id1: "".to_string(),
+        let ticket_confirmation_form_params = TicketConfirmationFormParams {
+            member_value: document
+                .select(&Selector::parse(r#"input[name="TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup"][checked]"#).unwrap())
+                .next().unwrap().value().attr("value").unwrap().to_string(),
+        };
+
+        match &self.ticket_confirmation_worksheet {
+            // Preset exists
+            Some(ticket_confirmation_worksheet) => Ok(gen_ticket_confirmation(
+                ticket_confirmation_worksheet,
+                &ticket_confirmation_form_params,
+            )),
+            // No preset, ask the user for more info
+            None => Ok(gen_ticket_confirmation(
+                &TicketConfirmationPersisted {
+                    personal_id: ask_for_string_with_descriptions("personal ID")?,
+                    phone_num: ask_for_string_with_descriptions("phone number")?,
+                    elder_id0: ask_for_string_with_descriptions("elderly personal ID #1")?,
+                    elder_id1: ask_for_string_with_descriptions("elderly personal ID #2")?,
                 },
-                member_radio: document
-                    .select(&Selector::parse(r#"input[name="TicketMemberSystemInputPanel:TakerMemberSystemDataView:memberSystemRadioGroup"][checked]"#).unwrap())
-                    .next().unwrap().value().attr("value").unwrap().to_string(),
-                form_mark: "".to_string(),
-                id_input_radio: 0,
-                diff_over: 1,
-                email: "".to_string(),
-                agree: "on".to_string(),
-                go_back_m: "".to_string(),
-                back_home: "".to_string(),
-                tgo_error: 1,
-            }
-        )
+                &ticket_confirmation_form_params,
+            ))
+        }
     }
 
     fn submit_ticket_confirmation(&self, ticket_confirmation: TicketConfirmation) -> Result<(), Box<dyn Error>> {

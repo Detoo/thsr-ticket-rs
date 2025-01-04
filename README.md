@@ -2,6 +2,8 @@
 
 ## TODO
 
-- [ ] Add boilerplates for fetching data
-- [ ] Refactor booking flows
-- [ ] Load from presets
+- [x] Add boilerplates for fetching data
+- [x] Refactor booking flows
+- [x] Load from presets
+- [ ] Command line arguments
+- [ ] Prepare for release and acknowledgement

@@ -5,9 +5,8 @@ use chrono_tz::Tz;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, HOST, USER_AGENT};
 use scraper::{ElementRef, Html, Selector};
 use strum::IntoEnumIterator;
-use crate::BookingFormParams;
 use crate::configs::BASE_URL;
-use crate::models::{Booking, BookingPersisted, CabinClass, ErrorMessages, Preset, SeatPref, Station, Trip};
+use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, ErrorMessages, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, Trip};
 
 pub fn gen_booking_url(session_id: String) -> String {
     format!("{base_url}/IMINT/;jsessionid={session_id}?wicket:interface=:0:BookingS1Form::IFormSubmitListener", base_url=BASE_URL)
@@ -37,8 +36,28 @@ pub fn gen_booking(booking_worksheet: &BookingPersisted, booking_form_params: &B
     }
 }
 
+pub fn gen_ticket_confirmation(ticket_confirmation_worksheet: &TicketConfirmationPersisted, ticket_confirmation_params: &TicketConfirmationFormParams) -> TicketConfirmation {
+    TicketConfirmation {
+        persisted: ticket_confirmation_worksheet.clone(),
+        member_radio: ticket_confirmation_params.member_value.clone(),
+        form_mark: "".to_string(),
+        id_input_radio: 0,
+        diff_over: 1,
+        email: "".to_string(),
+        agree: "on".to_string(),
+        go_back_m: "".to_string(),
+        back_home: "".to_string(),
+        tgo_error: 1,
+    }
+}
+
 pub fn ask_for_string() -> Result<String, Box<dyn Error>> {
     Ok(stdin().lines().next().unwrap()?.trim().to_string())
+}
+
+pub fn ask_for_string_with_descriptions(descriptions: &str) -> Result<String, Box<dyn Error>> {
+    println!("Input {descriptions}:");
+    Ok(ask_for_string()?)
 }
 
 pub fn ask_for_station(leg_type: &str, default: Station) -> Result<Station, Box<dyn Error>> {

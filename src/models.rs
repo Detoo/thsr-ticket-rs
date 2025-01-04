@@ -190,6 +190,16 @@ pub struct Preset {
     pub ticket_confirmation: TicketConfirmationPersisted,
 }
 
+pub struct BookingFormParams {
+    pub session_id: String,
+    pub search_by_time_value: String,
+    pub time_options: Vec<String>,
+}
+
+pub struct TicketConfirmationFormParams {
+    pub member_value: String,
+}
+
 #[derive(Debug)]
 pub struct ErrorMessages {
     pub errors: Vec<String>,
