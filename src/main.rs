@@ -50,7 +50,16 @@ impl App {
 
     fn prepare_preset(&mut self) -> Result<(), Box<dyn Error>> {
         // Load presets
-        let presets = serde_json::from_reader::<_, Vec<Preset>>(BufReader::new(File::open(configs::PRESETS_PATH)?))?;
+        let presets = match File::open(configs::PRESETS_PATH) {
+            Ok(file) => Ok(serde_json::from_reader::<_, Vec<Preset>>(BufReader::new(file))?),
+            Err(err) => match err.kind() {
+                io::ErrorKind::NotFound => {
+                    println!("Presets not found in {}, skip", configs::PRESETS_PATH);
+                    Ok(Vec::new())
+                },
+                _ => Err(err)
+            },
+        }?;
 
         match self.args.preset {
             Some(preset_num) => {
