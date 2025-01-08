@@ -1,9 +1,10 @@
 mod configs;
 mod models;
 mod utils;
+mod with_content_suffix;
 
 use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, TrainInfo, TrainSelection};
-use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_string_with_descriptions, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_preset, print_presets};
+use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_string_with_descriptions, ask_for_supplement_ids, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_preset, print_presets};
 use chrono_tz::Tz;
 use chrono_tz::Tz::Asia__Taipei;
 use clap::{arg, Parser};
@@ -165,13 +166,11 @@ impl App {
                     outbound_time: ask_for_time("departure", booking_form_params)?,
                     seat_prefer: ask_for_seat(SeatPref::NoPref)?,
                     class_type: ask_for_class(CabinClass::Standard)?,
-                    adult_ticket_num: ask_for_ticket_num("F", "adult", 1)?,
-                    elder_ticket_num: ask_for_ticket_num("E", "elder", 0)?,
-
-                    // TODO Currently not supported
-                    child_ticket_num: "0H".to_string(),
-                    disabled_ticket_num: "0W".to_string(),
-                    college_ticket_num: "0F".to_string(),
+                    adult_ticket_num: ask_for_ticket_num("adult", 1)?,
+                    child_ticket_num: ask_for_ticket_num("child", 0)?,
+                    disabled_ticket_num: ask_for_ticket_num("disabled", 0)?,
+                    elder_ticket_num: ask_for_ticket_num("elder", 0)?,
+                    college_ticket_num: ask_for_ticket_num("college", 0)?,
                 },
                 booking_form_params,
                 captcha_solution,
@@ -179,7 +178,7 @@ impl App {
         }
     }
 
-    fn submit_booking_and_get_trains(&self, session_id: String, booking: Booking) -> Result<Vec<TrainInfo>, Box<dyn Error>> {
+    fn submit_booking_and_get_trains(&self, session_id: String, booking: &Booking) -> Result<Vec<TrainInfo>, Box<dyn Error>> {
         // Submit booking info
         let url = gen_booking_url(session_id);
         debug!("submit_booking_form_url: {}", url);
@@ -233,7 +232,7 @@ impl App {
         })
     }
 
-    fn submit_train_selection(&self, train_selection: TrainSelection) -> Result<TicketConfirmation, Box<dyn Error>> {
+    fn submit_train_selection(&self, train_selection: &TrainSelection, booking: &Booking) -> Result<TicketConfirmation, Box<dyn Error>> {
         // Submit train selection info
         let response = self.client.post(configs::SUBMIT_TRAIN_URL)
             .headers(gen_common_headers())
@@ -262,8 +261,7 @@ impl App {
                 &TicketConfirmationPersisted {
                     personal_id: ask_for_string_with_descriptions("personal ID")?,
                     phone_num: ask_for_string_with_descriptions("phone number")?,
-                    elder_id0: ask_for_string_with_descriptions("elderly personal ID #1")?,
-                    elder_id1: ask_for_string_with_descriptions("elderly personal ID #2")?,
+                    supplemental_ids: ask_for_supplement_ids(booking)?,
                 },
                 &ticket_confirmation_form_params,
             ))
@@ -334,7 +332,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     debug!("booking (json): {}", serde_json::to_string(&booking).unwrap());
 
     // Submit booking and get available trains
-    let trains = app.submit_booking_and_get_trains(booking_form_params.session_id, booking)?;
+    let trains = app.submit_booking_and_get_trains(booking_form_params.session_id, &booking)?;
     debug!("trains: {:?}", trains);
 
     // Select train
@@ -343,7 +341,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     debug!("train_selection (json): {}", serde_json::to_string(&train_selection).unwrap());
 
     // Submit train selection and prepare ticket info
-    let ticket_confirmation = app.submit_train_selection(train_selection)?;
+    let ticket_confirmation = app.submit_train_selection(&train_selection, &booking)?;
     debug!("ticket_confirmation: {:?}", ticket_confirmation);
     debug!("ticket_confirmation (json): {}", serde_json::to_string(&ticket_confirmation).unwrap());
 

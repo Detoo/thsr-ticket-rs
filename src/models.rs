@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum::{EnumIter, FromRepr, Display};
+use crate::with_content_suffix;
 
 #[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, EnumIter, FromRepr, Display, Clone)]
 #[repr(u8)]
@@ -59,18 +61,23 @@ pub struct BookingPersisted {
     #[serde(default, rename = "trainCon:trainRadioGroup")]
     pub class_type: CabinClass,
 
-    // TODO There must be a better way to represent this
-    #[serde(default = "default_adult_ticket", rename = "ticketPanel:rows:0:ticketAmount")]
-    pub adult_ticket_num: String,
-    #[serde(default = "default_child_ticket", rename = "ticketPanel:rows:1:ticketAmount")]
-    pub child_ticket_num: String,
-    #[serde(default = "default_disabled_ticket", rename = "ticketPanel:rows:2:ticketAmount")]
-    pub disabled_ticket_num: String,
-    #[serde(default = "default_elder_ticket", rename = "ticketPanel:rows:3:ticketAmount")]
-    pub elder_ticket_num: String,
-    #[serde(default = "default_college_ticket", rename = "ticketPanel:rows:4:ticketAmount")]
-    pub college_ticket_num: String,
+    #[serde(default, rename = "ticketPanel:rows:0:ticketAmount", with = "content_suffix_adult")]
+    pub adult_ticket_num: u8,
+    #[serde(default, rename = "ticketPanel:rows:1:ticketAmount", with = "content_suffix_child")]
+    pub child_ticket_num: u8,
+    #[serde(default, rename = "ticketPanel:rows:2:ticketAmount", with = "content_suffix_disabled")]
+    pub disabled_ticket_num: u8,
+    #[serde(default, rename = "ticketPanel:rows:3:ticketAmount", with = "content_suffix_elder")]
+    pub elder_ticket_num: u8,
+    #[serde(default, rename = "ticketPanel:rows:4:ticketAmount", with = "content_suffix_college")]
+    pub college_ticket_num: u8,
 }
+
+with_content_suffix!(content_suffix_adult "F");
+with_content_suffix!(content_suffix_child "H");
+with_content_suffix!(content_suffix_disabled "W");
+with_content_suffix!(content_suffix_elder "E");
+with_content_suffix!(content_suffix_college "P");
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Booking {
@@ -93,26 +100,6 @@ pub struct Booking {
     pub to_train_id: Option<i16>,
     #[serde(default, rename = "backTrainIDInputField")]
     pub back_train_id: Option<i16>,
-}
-
-fn default_adult_ticket() -> String {
-    "1F".to_string()
-}
-
-fn default_child_ticket() -> String {
-    "0H".to_string()
-}
-
-fn default_disabled_ticket() -> String {
-    "0W".to_string()
-}
-
-fn default_elder_ticket() -> String {
-    "0E".to_string()
-}
-
-fn default_college_ticket() -> String {
-    "0P".to_string()
 }
 
 #[derive(Debug)]
@@ -140,11 +127,10 @@ pub struct TicketConfirmationPersisted {
     #[serde(rename = "dummyPhone")]
     pub phone_num: String,
 
-    // TODO Make it dynamic. Current implementation assumes 1 adult, 2 elder because the aliases are type and order dependent
-    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:1:passengerDataView2:passengerDataIdNumber")]
-    pub elder_id0: String,
-    #[serde(default, rename = "TicketPassengerInfoInputPanel:passengerDataView:2:passengerDataView2:passengerDataIdNumber")]
-    pub elder_id1: String,
+    // Since the form-data for disabled/elder IDs are ordinal-oriented and depend on the amount of other types of tickets,
+    // we must dynamically generate the key-value pair and flatten them to the form-data
+    #[serde(flatten)]
+    pub supplemental_ids: HashMap<String, String>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

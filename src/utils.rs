@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::stdin;
 use chrono::{Duration, NaiveDate, Utc};
@@ -141,18 +142,47 @@ pub fn ask_for_class(default: CabinClass) -> Result<CabinClass, Box<dyn Error>> 
     }
 }
 
-pub fn ask_for_ticket_num(ticket_type: &str, ticket_descriptions: &str, default: u8) -> Result<String, Box<dyn Error>> {
-    fn format_ticket_num(num: u8, ticket_type: &str) -> String {
-        format!("{num}{ticket_type}")
-    }
-
+pub fn ask_for_ticket_num(ticket_descriptions: &str, default: u8) -> Result<u8, Box<dyn Error>> {
     println!("Select number of {ticket_descriptions} tickets (default: {default}):");
     let input_str = ask_for_string()?;
     if input_str.is_empty() {
-        Ok(format_ticket_num(default, ticket_type))
+        Ok(default)
     } else {
-        Ok(format_ticket_num(input_str.parse()?, ticket_type))
+        Ok(input_str.parse()?)
     }
+}
+
+pub fn ask_for_supplement_ids(booking: &Booking) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let mut supplement_ids = HashMap::new();
+    let mut cursor = 0;
+    // Adult tickets does not need supplement IDs
+    cursor += &booking.persisted.adult_ticket_num;
+    // Child tickets does not need supplement IDs
+    cursor += &booking.persisted.child_ticket_num;
+
+    // Disable tickets
+    for i in 0..booking.persisted.disabled_ticket_num {
+        supplement_ids.insert(
+            format_supplement_ids_key(cursor + i),
+            ask_for_string_with_descriptions(&format!("personal ID for disable ticket #{}", i + 1))?,
+        );
+    }
+    cursor += &booking.persisted.disabled_ticket_num;
+
+    // Elder tickets
+    for i in 0..booking.persisted.elder_ticket_num {
+        supplement_ids.insert(
+            format_supplement_ids_key(cursor + i),
+            ask_for_string_with_descriptions(&format!("personal ID for elder ticket #{}", i + 1))?,
+        );
+    }
+    // cursor += &booking.persisted.elder_ticket_num; // Not needed unless there are new types of tickets
+
+    Ok(supplement_ids)
+}
+
+fn format_supplement_ids_key(id: u8) -> String {
+    format!("TicketPassengerInfoInputPanel:passengerDataView:{id}:passengerDataView2:passengerDataIdNumber")
 }
 
 // TODO I tried to implement a generic `ask_for_enum<T>()` to reduce repetitive codes in `ask_for_seat()`, `ask_for_class()`, etc.;
@@ -203,18 +233,34 @@ pub fn print_presets(presets: &Vec<Preset>) {
 
 pub fn print_preset(preset_num: usize, preset: &Preset) {
     println!("Preset #{option_num}", option_num=preset_num);
-    println!("  Personal ID:         {}", preset.ticket_confirmation.personal_id);
-    println!("  Phone:               {}", preset.ticket_confirmation.phone_num);
-    println!("  Depart Station:      {:?}", preset.booking.start_station);
-    println!("  Destination Station: {:?}", preset.booking.dest_station);
-    println!("  Depart Date:         {}", preset.booking.outbound_date);
-    println!("  Depart Time:         {}", preset.booking.outbound_time);
-    println!("  Cabin Class:         {:?}", preset.booking.class_type);
-    println!("  Seat Preference:     {:?}", preset.booking.seat_prefer);
-    // TODO This is hard-coded for now
-    println!("  Adult ticket number: {}", preset.booking.adult_ticket_num);
-    println!("  Elder ticket number: {}", preset.booking.elder_ticket_num);
-    println!("  Elder ID #1:         {}", preset.ticket_confirmation.elder_id0);
-    println!("  Elder ID #2:         {}", preset.ticket_confirmation.elder_id1);
+    println!("  Personal ID:                    {}", preset.ticket_confirmation.personal_id);
+    println!("  Phone:                          {}", preset.ticket_confirmation.phone_num);
+    println!("  Depart Station:                 {:?}", preset.booking.start_station);
+    println!("  Destination Station:            {:?}", preset.booking.dest_station);
+    println!("  Depart Date:                    {}", preset.booking.outbound_date);
+    println!("  Depart Time:                    {}", preset.booking.outbound_time);
+    println!("  Cabin Class:                    {:?}", preset.booking.class_type);
+    println!("  Seat Preference:                {:?}", preset.booking.seat_prefer);
+    println!("  Adult ticket number:            {}", preset.booking.adult_ticket_num);
+    println!("  Child ticket number:            {}", preset.booking.child_ticket_num);
+    println!("  Disabled ticket number:         {}", preset.booking.disabled_ticket_num);
+    println!("  Elder ticket number:            {}", preset.booking.elder_ticket_num);
+    println!("  College ticket number:          {}", preset.booking.college_ticket_num);
+
+    // Print supplemental personal IDs
+    let mut cursor = 0;
+    // Skip adult & child tickets (no personal ID needed)
+    cursor += preset.booking.adult_ticket_num + preset.booking.child_ticket_num;
+    // Disabled tickets
+    for i in 0..preset.booking.disabled_ticket_num {
+        println!("  Disabled ticket #{} personal ID: {}", i + 1, preset.ticket_confirmation.supplemental_ids.get(&format_supplement_ids_key(cursor + i)).unwrap());
+    }
+    cursor += preset.booking.disabled_ticket_num;
+    // Elder tickets
+    for i in 0..preset.booking.elder_ticket_num {
+        println!("  Elder ticket #{} personal ID:    {}", i + 1, preset.ticket_confirmation.supplemental_ids.get(&format_supplement_ids_key(cursor + i)).unwrap());
+    }
+    // cursor += preset.booking.elder_ticket_num; // Not needed unless there are new types of tickets
+
     println!();
 }
