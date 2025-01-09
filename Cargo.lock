@@ -1741,6 +1741,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_with_value_affix"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f94fa4a85a0dc340a652aec2189930764b0e028b8a0df6a41ffd59b3663dfcf"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "servo_arc"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1949,6 +1959,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "serde_with_value_affix",
  "strum",
 ]
 

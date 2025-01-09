@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
+use serde_with_value_affix::with_affix;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use serde::{Deserialize, Serialize};
-use serde_repr::{Deserialize_repr, Serialize_repr};
-use strum::{EnumIter, FromRepr, Display};
-use crate::with_content_suffix;
+use strum::{Display, EnumIter, FromRepr};
 
 #[derive(Debug, PartialEq, Serialize_repr, Deserialize_repr, EnumIter, FromRepr, Display, Clone)]
 #[repr(u8)]
@@ -73,11 +73,11 @@ pub struct BookingPersisted {
     pub college_ticket_num: u8,
 }
 
-with_content_suffix!(content_suffix_adult "F");
-with_content_suffix!(content_suffix_child "H");
-with_content_suffix!(content_suffix_disabled "W");
-with_content_suffix!(content_suffix_elder "E");
-with_content_suffix!(content_suffix_college "P");
+with_affix!(content_suffix_adult Suffix "F");
+with_affix!(content_suffix_child Suffix "H");
+with_affix!(content_suffix_disabled Suffix "W");
+with_affix!(content_suffix_elder Suffix "E");
+with_affix!(content_suffix_college Suffix "P");
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Booking {

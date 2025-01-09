@@ -1,7 +1,6 @@
 mod configs;
 mod models;
 mod utils;
-mod with_content_suffix;
 
 use crate::models::{Booking, BookingFormParams, BookingPersisted, CabinClass, Preset, SeatPref, Station, TicketConfirmation, TicketConfirmationFormParams, TicketConfirmationPersisted, TrainInfo, TrainSelection};
 use crate::utils::{ask_for_class, ask_for_date, ask_for_seat, ask_for_station, ask_for_string_with_descriptions, ask_for_supplement_ids, ask_for_ticket_num, ask_for_time, assert_submission_errors, format_date, gen_booking, gen_booking_url, gen_common_headers, gen_ticket_confirmation, parse_discount, print_preset, print_presets};
